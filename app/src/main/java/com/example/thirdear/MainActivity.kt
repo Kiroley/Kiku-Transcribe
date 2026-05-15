@@ -1,6 +1,7 @@
 package com.example.thirdear
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -8,27 +9,31 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.example.thirdear.ui.theme.ThirdEarTheme
+import kotlinx.coroutines.launch
 import org.json.JSONObject
 import org.vosk.Model
 import org.vosk.Recognizer
@@ -43,18 +48,19 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             ThirdEarTheme {
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    VoskScreen(modifier = Modifier.padding(innerPadding))
-                }
+                VoskApp()
             }
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun VoskScreen(modifier: Modifier = Modifier) {
+fun VoskApp() {
     val context = LocalContext.current
     val sessionManager = remember { SessionManager(context) }
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
     
     // Vosk State
     var model by remember { mutableStateOf<Model?>(null) }
@@ -67,11 +73,15 @@ fun VoskScreen(modifier: Modifier = Modifier) {
     var currentSessionName by remember { mutableStateOf(sessionManager.generateTimestampedName()) }
     
     // UI State
-    val scrollState = rememberScrollState()
     var showRenameDialog by remember { mutableStateOf(false) }
     var renameInput by remember { mutableStateOf("") }
-    var showSessionMenu by remember { mutableStateOf(false) }
     var sessionList by remember { mutableStateOf(sessionManager.listSessions()) }
+    val listState = rememberLazyListState()
+    
+    // Pinch-to-Zoom State
+    var fontSize by remember { mutableStateOf(18f) }
+    val minFontSize = 14f
+    val maxFontSize = 48f
 
     var hasPermission by remember {
         mutableStateOf(
@@ -104,7 +114,6 @@ fun VoskScreen(modifier: Modifier = Modifier) {
                 if (text.isNotEmpty()) {
                     sessionHistory += (if (sessionHistory.isEmpty()) "" else " ") + text
                     partialText = ""
-                    // Auto-save on every result to prevent data loss
                     sessionManager.saveSession(currentSessionName, sessionHistory)
                 }
             }
@@ -120,7 +129,6 @@ fun VoskScreen(modifier: Modifier = Modifier) {
             }
 
             override fun onError(e: Exception) {
-                println("Vosk Error: ${e.message}")
                 isListening = false
             }
 
@@ -151,9 +159,29 @@ fun VoskScreen(modifier: Modifier = Modifier) {
         }
     }
 
-    // Auto-scroll when text changes
+    // Export Logic
+    fun exportSession() {
+        if (isListening) toggleListening()
+        
+        val sendIntent: Intent = Intent().apply {
+            action = Intent.ACTION_SEND
+            putExtra(Intent.EXTRA_TEXT, sessionHistory)
+            putExtra(Intent.EXTRA_SUBJECT, currentSessionName)
+            type = "text/plain"
+        }
+        val shareIntent = Intent.createChooser(sendIntent, null)
+        context.startActivity(shareIntent)
+    }
+
+    // Sticky Auto-scroll Logic
     LaunchedEffect(sessionHistory, partialText) {
-        scrollState.animateScrollTo(scrollState.maxValue)
+        // Only scroll if we were at the bottom before the update
+        val lastVisibleItem = listState.layoutInfo.visibleItemsInfo.lastOrNull()
+        val isAtBottom = lastVisibleItem?.index == listState.layoutInfo.totalItemsCount - 1
+        
+        if (isAtBottom && !listState.isScrollInProgress) {
+            listState.animateScrollToItem(listState.layoutInfo.totalItemsCount)
+        }
     }
 
     // Initialization
@@ -170,130 +198,163 @@ fun VoskScreen(modifier: Modifier = Modifier) {
         }
     }
 
-    // Layout
-    Column(modifier = modifier.fillMaxSize()) {
-        // Top Bar / Session Header
-        TopAppBar(
-            title = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Image(
-                        painter = painterResource(id = R.drawable.app_logo),
-                        contentDescription = "Logo",
-                        modifier = Modifier.size(32.dp).padding(end = 8.dp),
-                        contentScale = ContentScale.Fit
-                    )
-                    Text(
-                        text = currentSessionName,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            },
-            actions = {
-                IconButton(onClick = { 
-                    sessionList = sessionManager.listSessions()
-                    showSessionMenu = true 
-                }) {
-                    Icon(Icons.Default.MoreVert, contentDescription = "Sessions")
-                }
-                DropdownMenu(
-                    expanded = showSessionMenu,
-                    onDismissRequest = { showSessionMenu = false }
-                ) {
-                    Text("Saved Sessions", modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), style = MaterialTheme.typography.labelSmall)
-                    sessionList.forEach { session ->
-                        DropdownMenuItem(
-                            text = { Text(session) },
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ModalDrawerSheet {
+                Spacer(Modifier.height(12.dp))
+                Text("Saved Sessions", modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.titleMedium)
+                HorizontalDivider()
+                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    items(sessionList) { session ->
+                        NavigationDrawerItem(
+                            label = { Text(session) },
+                            selected = session == currentSessionName,
                             onClick = {
-                                // Stop current if listening
                                 if (isListening) toggleListening()
-                                
-                                // Load session
                                 currentSessionName = session
                                 sessionHistory = sessionManager.loadSession(session)
                                 partialText = ""
-                                showSessionMenu = false
-                            }
+                                scope.launch { drawerState.close() }
+                            },
+                            modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
                         )
                     }
                 }
             }
-        )
-
-        // Transcription Area (ScrollView)
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .padding(16.dp)
-                .verticalScroll(scrollState)
-        ) {
-            Column {
-                Text(
-                    text = sessionHistory,
-                    style = MaterialTheme.typography.bodyLarge
-                )
-                if (partialText.isNotEmpty()) {
-                    Text(
-                        text = " $partialText",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.secondary
-                    )
-                }
-            }
         }
-
-        // Bottom Controls
-        Surface(tonalElevation = 2.dp) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Start/Stop
-                Button(
-                    onClick = { toggleListening() },
-                    colors = if (isListening) ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error) 
-                             else ButtonDefaults.buttonColors()
+    ) {
+        Scaffold { innerPadding ->
+            Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
+                // Transcription Area with Pinch-to-Zoom
+                SelectionContainer(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(bottom = 140.dp) // Space for bottom controls
+                        .pointerInput(Unit) {
+                            detectTransformGestures { _, _, zoom, _ ->
+                                fontSize = (fontSize * zoom).coerceIn(minFontSize, maxFontSize)
+                            }
+                        }
                 ) {
-                    Text(if (isListening) "Stop Listening" else "Start Listening")
-                }
-
-                // New Session
-                Button(onClick = {
-                    if (isListening) {
-                        speechService?.stop()
-                        speechService = null
-                        isListening = false
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.fillMaxSize().padding(16.dp)
+                    ) {
+                        item {
+                            Text(
+                                text = sessionHistory,
+                                style = MaterialTheme.typography.bodyLarge.copy(fontSize = fontSize.sp)
+                            )
+                            if (partialText.isNotEmpty()) {
+                                Text(
+                                    text = " $partialText",
+                                    style = MaterialTheme.typography.bodyLarge.copy(fontSize = fontSize.sp),
+                                    color = MaterialTheme.colorScheme.secondary
+                                )
+                            }
+                        }
                     }
-                    // Save current one last time
-                    sessionManager.saveSession(currentSessionName, sessionHistory)
-                    
-                    // Clear and Reset
-                    sessionHistory = ""
-                    partialText = ""
-                    currentSessionName = sessionManager.generateTimestampedName()
-                    
-                    // Restart automatically
-                    toggleListening()
-                }) {
-                    Text("New")
                 }
 
-                // Rename
-                Button(onClick = {
-                    renameInput = currentSessionName
-                    showRenameDialog = true
-                }) {
-                    Text("Rename")
+                // Bottom Controls Area
+                Surface(
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                    tonalElevation = 8.dp,
+                    shadowElevation = 8.dp
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        // Session Title and Rename Icon (Bottom)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        ) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.baseline_edit_24),
+                                contentDescription = "Rename",
+                                modifier = Modifier
+                                    .padding(end = 8.dp)
+                                    .size(20.dp)
+                                    .clickable {
+                                        renameInput = currentSessionName
+                                        showRenameDialog = true
+                                    },
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = currentSessionName,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        // Icons Row
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Sidebar Toggle (Bottom-Left)
+                            IconButton(onClick = {
+                                scope.launch {
+                                    if (drawerState.isClosed) {
+                                        sessionList = sessionManager.listSessions()
+                                        drawerState.open()
+                                    } else {
+                                        drawerState.close()
+                                    }
+                                }
+                            }) {
+                                Icon(
+                                    painter = painterResource(
+                                        id = if (drawerState.isClosed) R.drawable.outline_arrow_menu_open_24 
+                                             else R.drawable.outline_arrow_menu_close_24
+                                    ),
+                                    contentDescription = "Menu"
+                                )
+                            }
+
+                            // Center: Mic / Stop Button
+                            Box(contentAlignment = Alignment.Center) {
+                                FloatingActionButton(
+                                    onClick = { toggleListening() },
+                                    containerColor = if (isListening) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primaryContainer
+                                ) {
+                                    Icon(
+                                        imageVector = if (isListening) Icons.Default.Stop else Icons.Default.Mic,
+                                        contentDescription = if (isListening) "Stop" else "Start"
+                                    )
+                                }
+                            }
+
+                            // Right: New and Export Icons
+                            Row {
+                                IconButton(onClick = {
+                                    if (isListening) toggleListening()
+                                    sessionManager.saveSession(currentSessionName, sessionHistory)
+                                    sessionHistory = ""
+                                    partialText = ""
+                                    currentSessionName = sessionManager.generateTimestampedName()
+                                    toggleListening()
+                                }) {
+                                    Icon(Icons.Default.Refresh, contentDescription = "New Session")
+                                }
+                                IconButton(onClick = { exportSession() }) {
+                                    Icon(Icons.Default.Share, contentDescription = "Export")
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
     }
 
-    // Rename Dialog
     if (showRenameDialog) {
         AlertDialog(
             onDismissRequest = { showRenameDialog = false },
@@ -321,11 +382,4 @@ fun VoskScreen(modifier: Modifier = Modifier) {
             }
         )
     }
-}
-
-// Minimal Opt-in for Experimental APIs
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun TopAppBar(title: @Composable () -> Unit, actions: @Composable RowScope.() -> Unit) {
-    CenterAlignedTopAppBar(title = title, actions = actions)
 }
