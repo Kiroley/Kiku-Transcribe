@@ -587,13 +587,17 @@ fun VoskApp() {
                                         .padding(bottom = 45.dp)
                                 ) {
                                     val micBgColor = when {
-                                        isListening -> Color.Green // Solid Green when recording
+                                        isListening -> Color.Black // Black when recording
                                         sessionHistory.isNotEmpty() -> Color.Red // Solid Red when paused/stopped
                                         else -> Color.Gray.copy(alpha = 0.2f) // 20% Grey when inactive
                                     }
                                     
                                     val micIcon = if (isListening) Icons.Default.Stop else Icons.Default.Mic
-                                    val micTint = if (isListening || sessionHistory.isNotEmpty()) Color.Black else MaterialTheme.colorScheme.onSurface
+                                    val micTint = when {
+                                        isListening -> Color.White // White icon when recording (on black)
+                                        sessionHistory.isNotEmpty() -> Color.Black // Black icon when paused (on red)
+                                        else -> MaterialTheme.colorScheme.onSurface // Default when inactive
+                                    }
 
                                     Box(
                                         modifier = Modifier
