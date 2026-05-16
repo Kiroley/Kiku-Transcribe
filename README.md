@@ -54,3 +54,5 @@
 ---
 
 *Note: On first launch, the app will request Microphone permissions and may take a moment to unpack the voice model. Ensure you have granted the RECORD_AUDIO permission.*
+Linked from Alphacep/vosk-api
+https://github.com/alphacep/vosk-api/
