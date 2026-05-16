@@ -7,9 +7,15 @@ import java.util.*
 
 class SessionManager(private val context: Context) {
 
+    private val prefs = context.getSharedPreferences("ThirdEarPrefs", Context.MODE_PRIVATE)
+
     fun generateTimestampedName(): String {
-        val sdf = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.getDefault())
-        return "Session_${sdf.format(Date())}"
+        val sdf = SimpleDateFormat("yyMMMdd - HHmm", Locale.getDefault())
+        return sdf.format(Date())
+    }
+
+    fun getLatestSessionName(): String? {
+        return listSessions("Most Recent").firstOrNull()
     }
 
     fun saveSession(name: String, text: String) {
@@ -28,11 +34,17 @@ class SessionManager(private val context: Context) {
         }
     }
 
-    fun listSessions(): List<String> {
-        return context.fileList()
+    fun listSessions(sortType: String = "Most Recent"): List<String> {
+        val files = context.fileList()
             .filter { it.endsWith(".txt") }
             .map { it.removeSuffix(".txt") }
-            .sortedByDescending { it }
+        
+        return when (sortType) {
+            "A to Z" -> files.sortedBy { it.lowercase() }
+            "Oldest to newest" -> files.sortedBy { it } // Filenames based on YYMMMdd are naturally sortable
+            "Most Recent" -> files.sortedByDescending { it }
+            else -> files.sortedByDescending { it }
+        }
     }
 
     fun renameSession(oldName: String, newName: String) {
@@ -42,4 +54,18 @@ class SessionManager(private val context: Context) {
             oldFile.renameTo(newFile)
         }
     }
+
+    fun deleteSession(name: String) {
+        val file = File(context.filesDir, if (name.endsWith(".txt")) name else "$name.txt")
+        if (file.exists()) {
+            file.delete()
+        }
+    }
+
+    // Settings Persistence
+    fun saveFontSize(size: Float) = prefs.edit().putFloat("fontSize", size).apply()
+    fun loadFontSize(): Float = prefs.getFloat("fontSize", 18f)
+
+    fun saveSortType(type: String) = prefs.edit().putString("sortType", type).apply()
+    fun loadSortType(): String = prefs.getString("sortType", "Most Recent") ?: "Most Recent"
 }
