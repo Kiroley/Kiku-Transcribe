@@ -13,6 +13,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -184,10 +185,10 @@ fun VoskApp() {
                 val text = parseHypothesis(hypothesis, "text")
                 if (text.isNotEmpty()) {
                     sessionHistory += (if (sessionHistory.isEmpty()) "" else " ") + text
+                    sessionManager.saveSession(currentSessionName, sessionHistory)
                 }
                 partialText = ""
                 isListening = false
-                sessionManager.saveSession(currentSessionName, sessionHistory)
             }
 
             override fun onError(e: Exception) {
@@ -406,21 +407,47 @@ fun VoskApp() {
                                     .fillMaxSize()
                             ) {
                                 // Transcription Area
-                                Box(modifier = Modifier.fillMaxSize()) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .pointerInput(Unit) {
+                                            var totalDrag = 0f
+                                            detectHorizontalDragGestures(
+                                                onDragStart = { totalDrag = 0f },
+                                                onHorizontalDrag = { _, dragAmount ->
+                                                    totalDrag += dragAmount
+                                                    if (totalDrag > 100f && sessionDrawerState.isClosed) {
+                                                        scope.launch {
+                                                            sessionList = sessionManager.listSessions(sortType)
+                                                            sessionDrawerState.open()
+                                                        }
+                                                        totalDrag = 0f // Reset after opening
+                                                    } else if (totalDrag < -100f && settingsDrawerState.isClosed) {
+                                                        scope.launch {
+                                                            settingsDrawerState.open()
+                                                        }
+                                                        totalDrag = 0f
+                                                    }
+                                                }
+                                            )
+                                        }
+                                ) {
                                     LazyColumn(
                                         state = listState,
                                         modifier = Modifier.fillMaxSize().padding(horizontal = 40.dp)
                                     ) {
                                         item {
                                             Spacer(Modifier.height(16.dp))
-                                            SelectionContainer {
-                                                Text(
-                                                    text = sessionHistory,
-                                                    style = MaterialTheme.typography.bodyLarge.copy(
-                                                        fontSize = fontSize.sp,
-                                                        lineHeight = (fontSize * 1.4f).sp
+                                            if (sessionHistory.isNotEmpty()) {
+                                                SelectionContainer {
+                                                    Text(
+                                                        text = sessionHistory,
+                                                        style = MaterialTheme.typography.bodyLarge.copy(
+                                                            fontSize = fontSize.sp,
+                                                            lineHeight = (fontSize * 1.4f).sp
+                                                        )
                                                     )
-                                                )
+                                                }
                                             }
                                         }
                                         if (partialText.isNotEmpty()) {
@@ -560,11 +587,14 @@ fun VoskApp() {
                                         .padding(bottom = 45.dp)
                                 ) {
                                     val micBgColor = when {
-                                        isListening -> Color(0xFF4CAF50) // Solid Green when recording
-                                        sessionHistory.isNotEmpty() -> Color(0xFFF44336) // Solid Red when paused/stopped
+                                        isListening -> Color.Green // Solid Green when recording
+                                        sessionHistory.isNotEmpty() -> Color.Red // Solid Red when paused/stopped
                                         else -> Color.Gray.copy(alpha = 0.2f) // 20% Grey when inactive
                                     }
                                     
+                                    val micIcon = if (isListening) Icons.Default.Stop else Icons.Default.Mic
+                                    val micTint = if (isListening || sessionHistory.isNotEmpty()) Color.Black else MaterialTheme.colorScheme.onSurface
+
                                     Box(
                                         modifier = Modifier
                                             .size(80.dp)
@@ -574,10 +604,10 @@ fun VoskApp() {
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Icon(
-                                            imageVector = if (isListening) Icons.Default.Stop else Icons.Default.Mic,
+                                            imageVector = micIcon,
                                             contentDescription = if (isListening) "Stop" else "Start",
                                             modifier = Modifier.size(40.dp),
-                                            tint = if (isListening || sessionHistory.isNotEmpty()) Color.Black else MaterialTheme.colorScheme.onSurface
+                                            tint = micTint
                                         )
                                     }
                                 }
