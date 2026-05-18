@@ -1,6 +1,7 @@
 package com.example.thirdear
 
 import android.Manifest
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
@@ -12,14 +13,12 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -35,13 +34,14 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.*
 import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
 import com.example.thirdear.ui.theme.ThirdEarTheme
 import kotlinx.coroutines.launch
 import org.json.JSONObject
@@ -103,6 +103,7 @@ class CurvedNotchShape(private val notchRadius: Dp) : Shape {
 @Composable
 fun VoskApp() {
     val context = LocalContext.current
+    val density = LocalDensity.current
     val sessionManager = remember { SessionManager(context) }
     val sessionDrawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val settingsDrawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
@@ -191,7 +192,7 @@ fun VoskApp() {
                 isListening = false
             }
 
-            override fun onError(e: Exception) {
+            override fun onError(exception: Exception) {
                 isListening = false
             }
 
@@ -254,7 +255,7 @@ fun VoskApp() {
             val viewportBottom = layoutInfo.viewportEndOffset - layoutInfo.afterContentPadding
             val distanceToBottom = lastItemBottom - viewportBottom
             
-            val thresholdPx = with(context.resources.displayMetrics) { 50 * density } // 50dp threshold
+            val thresholdPx = with(density) { 50.dp.toPx() } // 50dp threshold
             val atLastIndex = lastItem.index == layoutInfo.totalItemsCount - 1
             
             atLastIndex && distanceToBottom <= thresholdPx
@@ -285,7 +286,7 @@ fun VoskApp() {
         if (hasPermission && model == null) {
             StorageService.unpack(context, "model-en-us", "model",
                 { loadedModel -> model = loadedModel },
-                { e -> println("Vosk: Unpack failed: ${e.message}") }
+                { _ -> println("Vosk: Unpack failed") }
             )
         }
     }
@@ -383,7 +384,7 @@ fun VoskApp() {
                                     }
                                 }
                                 HorizontalDivider()
-                                Column(modifier = Modifier.padding(16.dp)) {
+                                Column(modifier = Modifier.padding(16.dp).fillMaxHeight()) {
                                     Text("Text Size", fontWeight = FontWeight.Bold)
                                     Text("Size: ${fontSize.toInt()} sp", style = MaterialTheme.typography.labelMedium)
                                     Slider(
@@ -394,6 +395,44 @@ fun VoskApp() {
                                         },
                                         valueRange = minFontSize..maxFontSize
                                     )
+                                    
+                                    Spacer(modifier = Modifier.weight(1f))
+                                    
+                                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                                    
+                                    Text(
+                                        "About & Legal",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(bottom = 8.dp)
+                                    )
+                                    
+                                    val links = listOf(
+                                        "Privacy Policy" to "https://github.com/Kiroley/ThirdEar#privacy-policy",
+                                        "Open Source Licenses" to "https://github.com/Kiroley/ThirdEar#open-source-licenses"
+                                    )
+                                    
+                                    links.forEach { (label, url) ->
+                                        TextButton(
+                                            onClick = {
+                                                val intent = Intent(Intent.ACTION_VIEW, url.toUri())
+                                                try {
+                                                    context.startActivity(intent)
+                                                } catch (_: ActivityNotFoundException) {
+                                                    // Gracefully ignore
+                                                }
+                                            },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            contentPadding = PaddingValues(0.dp)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.Start
+                                            ) {
+                                                Text(label)
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
