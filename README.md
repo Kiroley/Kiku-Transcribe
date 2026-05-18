@@ -51,8 +51,31 @@
 - **Language**: Kotlin
 - **Architecture**: Modern Android architecture with `MutableState` and `LaunchedEffect` for reactive UI updates.
 
----
+## Privacy Policy
 
-*Note: On first launch, the app will request Microphone permissions and may take a moment to unpack the voice model. Ensure you have granted the RECORD_AUDIO permission.*
-Linked from Alphacep/vosk-api
-https://github.com/alphacep/vosk-api/
+**Effective Date:** May 18, 2026
+
+"Third Ear" is an offline-first transcription application designed to respect user privacy.
+
+**Data Collection and Processing**
+Third Ear requires access to your device's microphone (`RECORD_AUDIO` permission) strictly for the purpose of transcribing speech to text.
+
+* **100% Local Processing:** All audio processing and speech recognition are performed entirely locally on your device using offline acoustic models.
+* **No Data Transmission:** We do not collect, store, upload, or transmit any of your audio recordings, voice data, or generated transcripts to external servers or third parties.
+* **Storage:** Transcripts are saved locally in your device's internal app storage for your convenience. You have full control over this data and can delete sessions directly within the app.
+
+By using Third Ear, you maintain complete ownership and privacy over your voice data and conversations.
+
+## Open Source Licenses
+
+Third Ear is built using powerful open-source technologies. We are grateful to the developers and communities who make these tools available.
+
+### Vosk API and Models
+
+This application utilizes the [Vosk Speech Recognition API](https://alphacephei.com/vosk/) and its associated acoustic models for offline speech-to-text capabilities.
+
+* **Copyright:** 2020 Alpha Cephei Inc.
+* **License:** Licensed under the Apache License, Version 2.0 (the "License"). You may not use this file except in compliance with the License. You may obtain a copy of the License at:
+  http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
