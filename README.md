@@ -1,6 +1,6 @@
-# Third Ear
+# Kiku Transcribe
 
-**Third Ear** is a powerful, offline-first speech-to-text transcription application for Android. Built with Jetpack Compose and powered by the Vosk voice recognition engine, it provides real-time, privacy-focused transcription that works entirely on-device without requiring an internet connection.
+**Kiku Transcribe** is a powerful, offline-first speech-to-text transcription application for Android. Built with Jetpack Compose and powered by the Vosk voice recognition engine, it provides real-time, privacy-focused transcription that works entirely on-device without requiring an internet connection.
 
 ## 🌟 What it's used for
 
@@ -55,20 +55,20 @@
 
 **Effective Date:** May 18, 2026
 
-"Third Ear" is an offline-first transcription application designed to respect user privacy.
+"Kiku Transcribe" is an offline-first transcription application designed to respect user privacy.
 
 **Data Collection and Processing**
-Third Ear requires access to your device's microphone (`RECORD_AUDIO` permission) strictly for the purpose of transcribing speech to text.
+Kiku Transcribe requires access to your device's microphone (`RECORD_AUDIO` permission) strictly for the purpose of transcribing speech to text.
 
 * **100% Local Processing:** All audio processing and speech recognition are performed entirely locally on your device using offline acoustic models.
 * **No Data Transmission:** We do not collect, store, upload, or transmit any of your audio recordings, voice data, or generated transcripts to external servers or third parties.
 * **Storage:** Transcripts are saved locally in your device's internal app storage for your convenience. You have full control over this data and can delete sessions directly within the app.
 
-By using Third Ear, you maintain complete ownership and privacy over your voice data and conversations.
+By using Kiku Transcribe, you maintain complete ownership and privacy over your voice data and conversations.
 
 ## Open Source Licenses
 
-Third Ear is built using powerful open-source technologies. We are grateful to the developers and communities who make these tools available.
+Kiku Transcribe is built using powerful open-source technologies. We are grateful to the developers and communities who make these tools available.
 
 ### Vosk API and Models
 
