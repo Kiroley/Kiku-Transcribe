@@ -43,7 +43,6 @@ import androidx.compose.ui.unit.*
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import com.kiroley.kikutranscribe.ui.theme.ThirdEarTheme
-import com.kiroley.kikutranscribe.R
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import org.vosk.Model
@@ -165,7 +164,7 @@ fun VoskApp() {
         return try {
             val json = JSONObject(hypothesis)
             if (json.has(key)) json.getString(key) else ""
-        } catch (e: Exception) { 
+        } catch (_: Exception) { 
             "" 
         }
     }
@@ -243,7 +242,7 @@ fun VoskApp() {
                     service.startListening(recognitionListener)
                     speechService = service
                     isListening = true
-                } catch (e: IOException) {
+                } catch (_: IOException) {
                     println("Vosk: Failed to start recognizer")
                 }
             }
@@ -728,7 +727,7 @@ fun VoskApp() {
     // Dialogs
     if (showRenameDialog) {
         AlertDialog(
-            onDismissRequest = { showRenameDialog = false },
+            onDismissRequest = { /* Close handled by state */ },
             title = { Text("Rename Session") },
             text = {
                 TextField(
@@ -759,14 +758,14 @@ fun VoskApp() {
 
     if (sessionToDelete != null) {
         AlertDialog(
-            onDismissRequest = { sessionToDelete = null },
+            onDismissRequest = { /* Close handled by state */ },
             title = { Text("Delete Session") },
             text = { Text("Are you sure you want to permanently delete this session record?") },
             confirmButton = {
                 TextButton(onClick = {
-                    sessionToDelete?.let {
-                        sessionManager.deleteSession(it)
-                        if (it == currentSessionName) {
+                    sessionToDelete?.let { name ->
+                        sessionManager.deleteSession(name)
+                        if (name == currentSessionName) {
                             sessionHistory = ""
                             partialText = ""
                             currentSessionName = sessionManager.generateTimestampedName()

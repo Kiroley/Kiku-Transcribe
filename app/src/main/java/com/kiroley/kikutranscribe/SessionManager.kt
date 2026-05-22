@@ -1,8 +1,8 @@
 package com.kiroley.kikutranscribe
 
 import android.content.Context
+import androidx.core.content.edit
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.io.File
 import java.text.SimpleDateFormat
@@ -40,7 +40,7 @@ class SessionManager(private val context: Context) {
         return try {
             val jsonString = context.openFileInput(fileName).bufferedReader().use { it.readText() }
             json.decodeFromString<Session>(jsonString)
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             null
         }
     }
@@ -96,9 +96,9 @@ class SessionManager(private val context: Context) {
     }
 
     // Settings Persistence
-    fun saveFontSize(size: Float) = prefs.edit().putFloat("fontSize", size).apply()
+    fun saveFontSize(size: Float) = prefs.edit { putFloat("fontSize", size) }
     fun loadFontSize(): Float = prefs.getFloat("fontSize", 18f)
 
-    fun saveSortType(type: String) = prefs.edit().putString("sortType", type).apply()
+    fun saveSortType(type: String) = prefs.edit { putString("sortType", type) }
     fun loadSortType(): String = prefs.getString("sortType", "Most Recent") ?: "Most Recent"
 }
