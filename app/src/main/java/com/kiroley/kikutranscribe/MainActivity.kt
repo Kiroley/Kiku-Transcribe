@@ -1,6 +1,7 @@
-package com.example.thirdear
+package com.kiroley.kikutranscribe
 
 import android.Manifest
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
@@ -12,14 +13,12 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -35,14 +34,15 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.*
 import androidx.core.content.ContextCompat
-import com.example.thirdear.ui.theme.ThirdEarTheme
+import androidx.core.net.toUri
+import com.kiroley.kikutranscribe.ui.theme.ThirdEarTheme
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import org.vosk.Model
@@ -51,6 +51,8 @@ import org.vosk.android.RecognitionListener
 import org.vosk.android.SpeechService
 import org.vosk.android.StorageService
 import java.io.IOException
+import java.text.SimpleDateFormat
+import java.util.*
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -103,6 +105,7 @@ class CurvedNotchShape(private val notchRadius: Dp) : Shape {
 @Composable
 fun VoskApp() {
     val context = LocalContext.current
+    val density = LocalDensity.current
     val sessionManager = remember { SessionManager(context) }
     val sessionDrawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val settingsDrawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
@@ -117,6 +120,7 @@ fun VoskApp() {
     var sessionHistory by remember { mutableStateOf("") }
     var partialText by remember { mutableStateOf("") }
     var currentSessionName by remember { mutableStateOf(sessionManager.generateTimestampedName()) }
+    var activeSessionMetadata by remember { mutableStateOf<Session?>(null) }
     
     // UI State
     var showRenameDialog by remember { mutableStateOf(false) }
@@ -160,9 +164,26 @@ fun VoskApp() {
         return try {
             val json = JSONObject(hypothesis)
             if (json.has(key)) json.getString(key) else ""
-        } catch (e: Exception) { 
+        } catch (_: Exception) { 
             "" 
         }
+    }
+
+    fun saveCurrentSession(newContent: String? = null) {
+        val content = newContent ?: sessionHistory
+        val now = System.currentTimeMillis()
+        val session = activeSessionMetadata?.copy(
+            content = content,
+            lastModifiedAt = now
+        ) ?: Session(
+            name = currentSessionName,
+            content = content,
+            createdAt = now,
+            lastModifiedAt = now,
+            lastViewedAt = now
+        )
+        sessionManager.saveSession(session)
+        activeSessionMetadata = session
     }
 
     // Recognition Logic
@@ -175,23 +196,25 @@ fun VoskApp() {
             override fun onResult(hypothesis: String) {
                 val text = parseHypothesis(hypothesis, "text")
                 if (text.isNotEmpty()) {
-                    sessionHistory += (if (sessionHistory.isEmpty()) "" else " ") + text
+                    val updatedContent = sessionHistory + (if (sessionHistory.isEmpty()) "" else " ") + text
+                    sessionHistory = updatedContent
                     partialText = ""
-                    sessionManager.saveSession(currentSessionName, sessionHistory)
+                    saveCurrentSession(updatedContent)
                 }
             }
 
             override fun onFinalResult(hypothesis: String) {
                 val text = parseHypothesis(hypothesis, "text")
                 if (text.isNotEmpty()) {
-                    sessionHistory += (if (sessionHistory.isEmpty()) "" else " ") + text
-                    sessionManager.saveSession(currentSessionName, sessionHistory)
+                    val updatedContent = sessionHistory + (if (sessionHistory.isEmpty()) "" else " ") + text
+                    sessionHistory = updatedContent
+                    saveCurrentSession(updatedContent)
                 }
                 partialText = ""
                 isListening = false
             }
 
-            override fun onError(e: Exception) {
+            override fun onError(exception: Exception) {
                 isListening = false
             }
 
@@ -219,7 +242,7 @@ fun VoskApp() {
                     service.startListening(recognitionListener)
                     speechService = service
                     isListening = true
-                } catch (e: IOException) {
+                } catch (_: IOException) {
                     println("Vosk: Failed to start recognizer")
                 }
             }
@@ -254,7 +277,7 @@ fun VoskApp() {
             val viewportBottom = layoutInfo.viewportEndOffset - layoutInfo.afterContentPadding
             val distanceToBottom = lastItemBottom - viewportBottom
             
-            val thresholdPx = with(context.resources.displayMetrics) { 50 * density } // 50dp threshold
+            val thresholdPx = with(density) { 50.dp.toPx() } // 50dp threshold
             val atLastIndex = lastItem.index == layoutInfo.totalItemsCount - 1
             
             atLastIndex && distanceToBottom <= thresholdPx
@@ -274,10 +297,15 @@ fun VoskApp() {
     LaunchedEffect(Unit) {
         if (!hasPermission) permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
         
-        // Load latest session on launch
-        sessionManager.getLatestSessionName()?.let { latest ->
-            currentSessionName = latest
-            sessionHistory = sessionManager.loadSession(latest)
+        // Load latest viewed session on launch
+        sessionManager.getMostRecentlyViewedSessionName()?.let { latest ->
+            sessionManager.updateLastViewed(latest)
+            val session = sessionManager.loadSession(latest)
+            if (session != null) {
+                currentSessionName = session.name
+                sessionHistory = session.content
+                activeSessionMetadata = session
+            }
         }
     }
 
@@ -285,7 +313,7 @@ fun VoskApp() {
         if (hasPermission && model == null) {
             StorageService.unpack(context, "model-en-us", "model",
                 { loadedModel -> model = loadedModel },
-                { e -> println("Vosk: Unpack failed: ${e.message}") }
+                { _ -> println("Vosk: Unpack failed") }
             )
         }
     }
@@ -320,7 +348,7 @@ fun VoskApp() {
                                 Icon(Icons.Default.ArrowDropDown, null)
                             }
                             DropdownMenu(expanded = showSortMenu, onDismissRequest = { showSortMenu = false }) {
-                                listOf("A to Z", "Most Recent", "Oldest to newest").forEach { type ->
+                                listOf("Most Recent", "Oldest to newest").forEach { type ->
                                     DropdownMenuItem(
                                         text = { Text(type) },
                                         onClick = {
@@ -336,7 +364,7 @@ fun VoskApp() {
                     }
                     HorizontalDivider()
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
-                        items(sessionList) { session ->
+                        items(sessionList) { sessionName ->
                             NavigationDrawerItem(
                                 label = {
                                     Row(
@@ -344,17 +372,22 @@ fun VoskApp() {
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text(session, modifier = Modifier.weight(1f))
-                                        IconButton(onClick = { sessionToDelete = session }) {
+                                        Text(sessionName, modifier = Modifier.weight(1f))
+                                        IconButton(onClick = { sessionToDelete = sessionName }) {
                                             Icon(Icons.Default.Delete, "Delete", modifier = Modifier.size(20.dp))
                                         }
                                     }
                                 },
-                                selected = session == currentSessionName,
+                                selected = sessionName == currentSessionName,
                                 onClick = {
                                     if (isListening) toggleListening()
-                                    currentSessionName = session
-                                    sessionHistory = sessionManager.loadSession(session)
+                                    sessionManager.updateLastViewed(sessionName)
+                                    val session = sessionManager.loadSession(sessionName)
+                                    if (session != null) {
+                                        currentSessionName = session.name
+                                        sessionHistory = session.content
+                                        activeSessionMetadata = session
+                                    }
                                     partialText = ""
                                     scope.launch { sessionDrawerState.close() }
                                 },
@@ -383,7 +416,7 @@ fun VoskApp() {
                                     }
                                 }
                                 HorizontalDivider()
-                                Column(modifier = Modifier.padding(16.dp)) {
+                                Column(modifier = Modifier.padding(16.dp).fillMaxHeight()) {
                                     Text("Text Size", fontWeight = FontWeight.Bold)
                                     Text("Size: ${fontSize.toInt()} sp", style = MaterialTheme.typography.labelMedium)
                                     Slider(
@@ -394,6 +427,73 @@ fun VoskApp() {
                                         },
                                         valueRange = minFontSize..maxFontSize
                                     )
+                                    
+                                    Spacer(modifier = Modifier.height(24.dp))
+                                    
+                                    // NEW: Session Info Section
+                                    Text("Session Info", fontWeight = FontWeight.Bold)
+                                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                                    
+                                    activeSessionMetadata?.let { session ->
+                                        val sdf = SimpleDateFormat("MMM dd, yyyy - hh:mm a", Locale.getDefault())
+                                        
+                                        Column(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(MaterialTheme.shapes.small)
+                                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                                                .padding(12.dp)
+                                        ) {
+                                            MetadataField("Created", sdf.format(Date(session.createdAt)))
+                                            MetadataField("Last Edited", sdf.format(Date(session.lastModifiedAt)))
+                                            MetadataField("Last Opened", sdf.format(Date(session.lastViewedAt)))
+                                        }
+                                    } ?: run {
+                                        Text(
+                                            "No active session loaded",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.padding(vertical = 8.dp)
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.weight(1f))
+                                    
+                                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                                    
+                                    Text(
+                                        "About & Legal",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(bottom = 8.dp)
+                                    )
+                                    
+                                    val links = listOf(
+                                        "Privacy Policy" to "https://github.com/Kiroley/Kiku-Transcribe#privacy-policy",
+                                        "Open Source Licenses" to "https://github.com/Kiroley/Kiku-Transcribe#open-source-licenses"
+                                    )
+                                    
+                                    links.forEach { (label, url) ->
+                                        TextButton(
+                                            onClick = {
+                                                val intent = Intent(Intent.ACTION_VIEW, url.toUri())
+                                                try {
+                                                    context.startActivity(intent)
+                                                } catch (_: ActivityNotFoundException) {
+                                                    // Gracefully ignore
+                                                }
+                                            },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            contentPadding = PaddingValues(0.dp)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.Start
+                                            ) {
+                                                Text(label)
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -532,10 +632,11 @@ fun VoskApp() {
                                                         if (isListening) {
                                                             stopListening()
                                                         }
-                                                        sessionManager.saveSession(currentSessionName, sessionHistory)
+                                                        saveCurrentSession()
                                                         sessionHistory = ""
                                                         partialText = ""
                                                         currentSessionName = sessionManager.generateTimestampedName()
+                                                        activeSessionMetadata = null
                                                         // MIC OFF by default for new session
                                                     }
                                                 ) {
@@ -626,7 +727,7 @@ fun VoskApp() {
     // Dialogs
     if (showRenameDialog) {
         AlertDialog(
-            onDismissRequest = { showRenameDialog = false },
+            onDismissRequest = { /* Close handled by state */ },
             title = { Text("Rename Session") },
             text = {
                 TextField(
@@ -639,6 +740,8 @@ fun VoskApp() {
                 TextButton(onClick = {
                     sessionManager.renameSession(currentSessionName, renameInput)
                     currentSessionName = renameInput
+                    // Refresh metadata after rename
+                    activeSessionMetadata = sessionManager.loadSession(renameInput)
                     sessionList = sessionManager.listSessions(sortType)
                     showRenameDialog = false
                 }) {
@@ -655,17 +758,18 @@ fun VoskApp() {
 
     if (sessionToDelete != null) {
         AlertDialog(
-            onDismissRequest = { sessionToDelete = null },
+            onDismissRequest = { /* Close handled by state */ },
             title = { Text("Delete Session") },
             text = { Text("Are you sure you want to permanently delete this session record?") },
             confirmButton = {
                 TextButton(onClick = {
-                    sessionToDelete?.let {
-                        sessionManager.deleteSession(it)
-                        if (it == currentSessionName) {
+                    sessionToDelete?.let { name ->
+                        sessionManager.deleteSession(name)
+                        if (name == currentSessionName) {
                             sessionHistory = ""
                             partialText = ""
                             currentSessionName = sessionManager.generateTimestampedName()
+                            activeSessionMetadata = null
                         }
                         sessionList = sessionManager.listSessions(sortType)
                     }
@@ -679,6 +783,26 @@ fun VoskApp() {
                     Text("Cancel")
                 }
             }
+        )
+    }
+}
+
+@Composable
+fun MetadataField(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            text = "$label:",
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 }

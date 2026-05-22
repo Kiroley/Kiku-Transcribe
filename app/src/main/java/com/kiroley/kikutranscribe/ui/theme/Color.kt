@@ -1,4 +1,4 @@
-package com.example.thirdear.ui.theme
+package com.kiroley.kikutranscribe.ui.theme
 
 import androidx.compose.ui.graphics.Color
 

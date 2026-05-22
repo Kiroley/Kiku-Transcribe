@@ -1,4 +1,4 @@
-package com.example.thirdear
+package com.kiroley.kikutranscribe
 
 import org.junit.Test
 
